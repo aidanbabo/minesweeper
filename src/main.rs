@@ -1,10 +1,23 @@
 // TODO 
 // - add border
-//   - requires ofset variable in cell calculations
-//   - requires new WIDTH and HEIGHT variables
+//   - change constant to variables in MSVSettings
 // - add smiley
 //   - requires facial animations while clicking on flagged
-//   - might require `.lazy(true)` for gif to play properly
+//   - need to redesign mouse input, for now it ignores imput
+//     in that region when checking for valid input
+// - add numbers
+//   - need to create time and mines variables that are shared
+//   - these to have to have numeric representations in the code
+//     like how the open spaces have representations in the code.
+//     OR not and just store it as a number
+//   - TODO how tf to timers work in this language, std::Duration?
+// - levels of difficulty
+//   - look into the source code to see what the difficulties are
+//     search for "Expert"
+// - click on the number jawn
+//   - automatically clears all around it if there are that number
+//     of flags around it
+//   - if it runs into a bomb, you die... :)
 
 use piston::window::WindowSettings;
 use piston::input::{RenderEvent};
@@ -22,8 +35,10 @@ pub use crate::minesweeper_view::{MineSweeperView, MineSweeperViewSettings};
 
 // screen heigh and width, currently just enough to fill play area
 // TODO make larger to accomodate new size
-const WIDTH: f64 = 496.0;
-const HEIGHT: f64 = 256.0;
+const WIDTH: f64 = 516.0;   // 31 tiles * 16 width + each border which is 10 each
+const HEIGHT: f64 = 314.0;  // 16 tiles * 16 height + each border which is 10 each
+                            // plus additional top space which is 28 and includes 
+                            // another border of height 10
 
 fn main() {
     // create window
@@ -35,7 +50,9 @@ fn main() {
     let mut window: GlutinWindow = settings.build()
         .expect("Could not create window");
 
-    let mut events = Events::new(EventSettings::new());
+    let mut event_settings = EventSettings::new();
+    event_settings.lazy = true;
+    let mut events = Events::new(event_settings);
     let mut gl = GlGraphics::new(opengl);
 
     // initialize custom classes to handle events and the like
@@ -50,7 +67,7 @@ fn main() {
     while let Some(e) = events.next(&mut window) {
 
         // handle input event
-        ms_c.event([31.0 * 16.0, 16.0 * 16.0], &e);
+        ms_c.event(ms_v.settings.playtl, [31.0 * 16.0, 16.0 * 16.0], &e);
 
         // handle rendering
         if let Some(r) = e.render_args() {

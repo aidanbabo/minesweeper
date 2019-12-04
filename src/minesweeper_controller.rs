@@ -18,31 +18,34 @@ impl MineSweeperController {
     }
 
     /// Handles an event
-    pub fn event<E: GenericEvent>(&mut self, size: [f64; 2], e: &E) {
+    pub fn event<E: GenericEvent>(&mut self, offset: [f64; 2], size: [f64; 2], e: &E) {
         use piston::input::{Button, Key, MouseButton};
-
-        if e.press_args() == Some(Button::Keyboard(Key::R)) {
-            println!("I pressed R!");
-            self.reset();
-            return;
-        }
-
-        if self.minesweeper.lost { return }
 
         if let Some(p) = e.mouse_cursor_args() {
             self.cursor_pos = p;
         }
 
+        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+            let x = self.cursor_pos[0];
+            let y = self.cursor_pos[1];
+            if x >= 244.0 && x <= 272.0 && y >= 10.0 && y <= 38.0 {
+                self.reset();
+                return;
+            }
+        }
+
+        if self.minesweeper.lost { return }
+
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
                 Key::Space => {
-                    let x = self.cursor_pos[0];
-                    let y = self.cursor_pos[1];
+                    let x = self.cursor_pos[0] - offset[0];
+                    let y = self.cursor_pos[1] - offset[1];
         
                     if x >= 0.0 && x < size[0] && y >= 1.0 && y < size[1] { 
-                        let cell_x = (x / size[0] * self.minesweeper.cols as f64) as usize;
-                        let cell_y = (y / size[1] * self.minesweeper.rows as f64) as usize;
-                        self.mark(cell_x, cell_y);
+                        let col = (x / size[0] * self.minesweeper.cols as f64) as usize;
+                        let row = (y / size[1] * self.minesweeper.rows as f64) as usize;
+                        self.mark(row, col);
                     }
                 },
                 _ => {},
@@ -50,52 +53,115 @@ impl MineSweeperController {
         }
 
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-            let x = self.cursor_pos[0];
-            let y = self.cursor_pos[1];
+            let x = self.cursor_pos[0] - offset[0];
+            let y = self.cursor_pos[1] - offset[1];
 
             if x >= 0.0 && x < size[0] && y >= 1.0 && y < size[1] { 
-                let cell_x = (x / size[0] * self.minesweeper.cols as f64) as usize;
-                let cell_y = (y / size[1] * self.minesweeper.rows as f64) as usize;
-                self.reveal(cell_x, cell_y);
+                let col = (x / size[0] * self.minesweeper.cols as f64) as usize;
+                let row = (y / size[1] * self.minesweeper.rows as f64) as usize;
+                let ref status = self.minesweeper.get(row, col).status;
+                if status == &Status::Unmarked  || status == &Status::Questioned {
+                    self.reveal(row, col);
+                } else if status == &Status::Uncovered {
+                    self.clear_around(row, col);
+                }
             }
         }
     }
 
-    fn reveal(&mut self, x: usize, y: usize) {
-        let square = self.minesweeper.get_mut(y, x);
-        if square.status != Status::Uncovered && square.status != Status::Flagged {
-            square.status = Status::Uncovered;
-            if square.content == Content::Zero {
-                if x > 0 {
-                    self.reveal(x-1, y);
-                    if y > 0 {
-                        self.reveal(x-1, y-1);
-                    }
-                    if y < self.minesweeper.rows - 1 {
-                        self.reveal(x-1, y+1);
-                    }
+    fn clear_around(&mut self, row: usize, col: usize) {
+        let ref square = self.minesweeper.get(row, col);
+        let around = self.flags_around(row, col);
+        let i: u8 = square.content.clone().into();
+        if i != 0 && i == around {
+            if row > 0 {
+                self.reveal(row-1, col);
+                if col > 0 {
+                    self.reveal(row-1, col-1);
                 }
-                if x < self.minesweeper.cols - 1 {
-                    self.reveal(x+1, y);
-                    if y > 0 {
-                        self.reveal(x+1, y-1);
-                    }
-                    if y < self.minesweeper.rows - 1 {
-                        self.reveal(x+1, y+1);
-                    }
+                if col < self.minesweeper.cols - 1 {
+                    self.reveal(row-1, col+1);
                 }
-                if y > 0 { self.reveal(x, y-1); }
-                if y < self.minesweeper.rows - 1 { self.reveal(x, y+1); }
-            // TODO most of the game logic
-            //      - what about bomb?
-            } else if square.content == Content::Mine {
-                self.lose();
             }
+            if row < self.minesweeper.rows - 1 {
+                self.reveal(row+1, col);
+                if col > 0 {
+                    self.reveal(row+1, col-1);
+                }
+                if col < self.minesweeper.cols - 1 {
+                    self.reveal(row+1, col+1);
+                }
+            }
+            if col > 0 { self.reveal(row, col-1); }
+            if col < self.minesweeper.cols - 1 { self.reveal(row, col+1); }
         }
     }
 
-    fn mark(&mut self, x: usize, y: usize) {
-        let square = self.minesweeper.get_mut(y, x);
+    fn reveal(&mut self, row: usize, col: usize) {
+        let square = self.minesweeper.get_mut(row, col);
+        // If flagged, don't click
+        if square.status == Status::Flagged || square.status == Status::Uncovered { return }
+
+        // Set status to uncovred, if not already set
+        square.status = Status::Uncovered;
+        // This is the recursive call for clearing blank spaces
+        // In this case, the content must be zero, and it must currently be covered
+        if square.content == Content::Zero { 
+            if row > 0 {
+                self.reveal(row-1, col);
+                if col > 0 {
+                    self.reveal(row-1, col-1);
+                }
+                if col < self.minesweeper.cols - 1 {
+                    self.reveal(row-1, col+1);
+                }
+            }
+            if row < self.minesweeper.rows - 1 {
+                self.reveal(row+1, col);
+                if col > 0 {
+                    self.reveal(row+1, col-1);
+                }
+                if col < self.minesweeper.cols - 1 {
+                    self.reveal(row+1, col+1);
+                }
+            }
+            if col > 0 { self.reveal(row, col-1); }
+            if col < self.minesweeper.cols - 1 { self.reveal(row, col+1); }
+        // if it is a mine, lose
+        } else if square.content == Content::Mine {
+            self.lose();
+        }
+    }
+
+    fn flags_around(&self, row: usize, col: usize) -> u8 {
+        let ref field = self.minesweeper.field;
+        let flag = Status::Flagged;
+        let mut count = 0;
+            if row > 0 {
+                if field[row-1][col].status == flag { count += 1}
+                if col > 0 {
+                    if field[row-1][col-1].status == flag { count += 1}
+                }
+                if col < self.minesweeper.cols - 1 {
+                    if field[row-1][col+1].status == flag { count += 1}
+                }
+            }
+            if row < self.minesweeper.rows - 1 {
+                    if field[row+1][col].status == flag { count += 1}
+                if col > 0 {
+                    if field[row+1][col-1].status == flag { count += 1}
+                }
+                if col < self.minesweeper.cols - 1 {
+                    if field[row+1][col+1].status == flag { count += 1}
+                }
+            }
+            if col > 0 { if field[row][col-1].status == flag { count += 1 } }
+            if col < self.minesweeper.cols - 1 { if field[row][col+1].status == flag { count +=1 } }
+        count
+    }
+
+    fn mark(&mut self, row: usize, col: usize) {
+        let square = self.minesweeper.get_mut(row, col);
         square.status = match square.status {
             Status::Uncovered => Status::Uncovered,
             Status::Unmarked => Status::Flagged,
