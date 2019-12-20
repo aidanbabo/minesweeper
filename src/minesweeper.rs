@@ -17,23 +17,7 @@ pub enum Content {
     Mine,
 }
 
-impl Into<u8> for  Content {
-    fn into(self) -> u8 {
-        match self {
-            Content::Zero => 0,
-            Content::One => 1,
-            Content::Two => 2,
-            Content::Three => 3,
-            Content::Four => 4,
-            Content::Five => 5,
-            Content::Six => 6,
-            Content::Seven => 7,
-            Content::Eight => 8,
-            Content::Mine => 9,
-        }
-    }
-}
-
+// Autoimplements Into<Content> for u8
 impl From<u8> for Content {
     fn from(n: u8) -> Self {
         match n {
@@ -48,6 +32,23 @@ impl From<u8> for Content {
             8 => Content::Eight,
             9 => Content::Mine,
             _ => Content::Mine,
+        }
+    }
+}
+
+impl Into<u8> for  Content {
+    fn into(self) -> u8 {
+        match self {
+            Content::Zero => 0,
+            Content::One => 1,
+            Content::Two => 2,
+            Content::Three => 3,
+            Content::Four => 4,
+            Content::Five => 5,
+            Content::Six => 6,
+            Content::Seven => 7,
+            Content::Eight => 8,
+            Content::Mine => 9,
         }
     }
 }
@@ -109,6 +110,8 @@ pub struct MineSweeper {
     pub rows: usize,
     pub cols: usize,
     pub lost: bool,
+    pub won: bool,
+    pub left: usize,
 }
 
 impl MineSweeper {
@@ -119,13 +122,16 @@ impl MineSweeper {
                 field[i][j] = Square::new();
             }
         }
-        Self::populate(&mut field);
+        let bombs = 99;
+        Self::populate(&mut field, bombs);
         Self::calculate(&mut field);
         MineSweeper {
             field,
             rows: ROWS,
             cols: COLS,
             lost: false,
+            won: false,
+            left: ROWS * COLS - bombs,
         }
     }
 
@@ -139,8 +145,8 @@ impl MineSweeper {
         &mut self.field[row.into()][col.into()]
     }
 
-    fn populate(field: &mut Field) {
-        let mut mines = 99;
+    fn populate(field: &mut Field, bombs: usize) {
+        let mut mines = bombs;
         let mut rng = thread_rng();
         let empty = Square::new();
         while mines > 0 {
@@ -182,6 +188,7 @@ impl MineSweeper {
             if field[i][COLS-1].content == Content::Mine {
                 field[i-1][COLS-2].content += 1.into();
                 field[i-1][COLS-1].content += 1.into();
+                field[i][COLS-2].content += 1.into();
                 field[i+1][COLS-2].content += 1.into();
                 field[i+1][COLS-1].content += 1.into();
             }

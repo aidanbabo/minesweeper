@@ -7,13 +7,19 @@ use crate::minesweeper::{Content, Status};
 
 struct Smiley {
     pub normal: Texture,
+    pub x_eyes: Texture,
+    pub sunglasses: Texture,
 }
 
 impl Smiley {
     fn new(texture_settings: &TextureSettings) -> Self {
         let normal = Texture::from_path(Path::new("./assets/normalsmiley.gif"), texture_settings).expect("Could not find normal smiley");
+        let x_eyes = Texture::from_path(Path::new("./assets/deadsmiley.gif"), texture_settings).expect("Could not find dead smiley");
+        let sunglasses = Texture::from_path(Path::new("./assets/sunglassessmiley.gif"), texture_settings).expect("Could not find sunglasses smiley");
         Smiley {
             normal,
+            x_eyes,
+            sunglasses,
         }
     }
 }
@@ -74,6 +80,8 @@ struct Textures {
     pub border: Border,
     /// All smiley textures
     pub smiley: Smiley,
+    /// All big red numbers
+    pub numbers: [Texture; 10],
 }
 
 impl Textures {
@@ -111,8 +119,18 @@ impl Textures {
 
         };
 
+        let numbers = {
+            let mut numbers: [MaybeUninit<Texture>; 10] = unsafe {
+                MaybeUninit::uninit().assume_init()
+            };
+            for number in 0..10 {
+                numbers[number] = MaybeUninit::new(Texture::from_path(Path::new(&format!("./assets/time{}.gif", number)), texture_settings).expect("Could not find number image"));
+            }
+            unsafe { mem::transmute::<_, [Texture; 10]>(numbers) }
+        };
+
         let mine = Texture::from_path(Path::new("./assets/bombrevealed.gif"), texture_settings).expect("Could not find bomb image");
-        let flagged = Texture::from_path(Path::new("./assets/bombflagged.gif"), texture_settings).expect("Could not find flagged");
+        let flagged = Texture::from_path(Path::new("./assets/bombflagged.png"), texture_settings).expect("Could not find flagged");
         let questioned = Texture::from_path(Path::new("./assets/bombquestioned.gif"), texture_settings).expect("Could not find questioned");
 
         let bombdeath = Texture::from_path(Path::new("./assets/bombdeath.gif"), texture_settings).expect("Could not find bombdeath");
@@ -133,6 +151,7 @@ impl Textures {
             empty,
             border,
             smiley,
+            numbers,
         }
     }
 
@@ -181,23 +200,51 @@ impl Textures {
             }
         }
     }
+
+    pub fn smiley(&self, controller: &MineSweeperController) -> &Texture {
+        if controller.minesweeper.won { &self.smiley.sunglasses }
+        else if controller.minesweeper.lost { &self.smiley.x_eyes }
+        else { &self.smiley.normal }
+    }
+
 } 
 
 /// Settings, certain distances and such are stores here
+#[derive(Clone, Copy)]
 pub struct MineSweeperViewSettings {
-    pub cell_size: f64,
+    pub square_side: f64,
     pub rows: usize,
     pub cols: usize,
-    pub playtl: [f64; 2],
+    pub border_long: f64,
+    pub border_short: f64,
+    pub smiley_side: f64,
+    pub time_height: f64,
+    pub time_width: f64,
+    pub scr_width: f64,
+    pub scr_height: f64,
 }
 
 impl MineSweeperViewSettings {
-    pub fn new(rows: usize, cols: usize) -> Self {
+    pub fn new(rows: usize, cols: usize, scale: f64) -> Self {
+        let square_side = 16.0 * scale;
+        let border_long = 10.0 * scale;
+        let border_short = 4.0 * scale;
+        let smiley_side = 28.0 * scale;
+        let time_height = 23.0 * scale;
+        let time_width = 13.0 * scale;
+        let scr_width = border_long * 2.0 + cols as f64 * square_side;
+        let scr_height = border_long * 3.0 + rows as f64 * square_side + smiley_side;
         MineSweeperViewSettings {
-            cell_size: 16.0,
+            square_side,
             rows,
             cols,
-            playtl: [10.0, 48.0]
+            border_long,
+            border_short,
+            smiley_side,
+            time_height,
+            time_width,
+            scr_width,
+            scr_height,
         }
     }
 }
@@ -223,9 +270,12 @@ impl MineSweeperView {
     )
     {
         let ref settings = self.settings;
+        let mid_divider = settings.border_long + settings.smiley_side;
+        let bot_divider = settings.border_long * 2.0 + settings.smiley_side + settings.rows as f64 * settings.square_side;
+        let far_right = settings.border_long + settings.cols as f64 * settings.square_side;
 
         // draw corner and join pieces
-        let side = 10.0;
+        let side = settings.border_long;
         let image = Image::new().rect(square(0.0, 0.0, side));
         // top left
         image.draw(&self.textures.border.topleft,
@@ -235,32 +285,32 @@ impl MineSweeperView {
         // top right
         image.draw(&self.textures.border.topright,
                    &c.draw_state,
-                   c.transform.trans(506.0, 0.0),
+                   c.transform.trans(far_right, 0.0),
                    g);
         // bottom left
         image.draw(&self.textures.border.bottomleft,
                    &c.draw_state,
-                   c.transform.trans(0.0, 304.0),
+                   c.transform.trans(0.0, bot_divider),
                    g);
         // bottom right
         image.draw(&self.textures.border.bottomright,
                    &c.draw_state,
-                   c.transform.trans(506.0, 304.0),
+                   c.transform.trans(far_right, bot_divider),
                    g);
         // left join
         image.draw(&self.textures.border.leftjoin,
                    &c.draw_state,
-                   c.transform.trans(0.0, 38.0),
+                   c.transform.trans(0.0, mid_divider),
                    g);
         // right join
         image.draw(&self.textures.border.rightjoin,
                    &c.draw_state,
-                   c.transform.trans(506.0, 38.0),
+                   c.transform.trans(far_right, mid_divider),
                    g);
 
         // draw horizontal borders - 124 total
-        let width = 4.0;
-        let height = 10.0;
+        let width = settings.border_short;
+        let height = settings.border_long;
         let image = Image::new().rect([0.0, 0.0, width, height]);
         for i in 0..124 {
             image.draw(&self.textures.border.topbottom,
@@ -269,53 +319,66 @@ impl MineSweeperView {
                        g);
             image.draw(&self.textures.border.topbottom,
                        &c.draw_state,
-                       c.transform.trans(height + (i as f64 * width), 38.0),
+                       c.transform.trans(height + (i as f64 * width), mid_divider),
                        g);
             image.draw(&self.textures.border.topbottom,
                        &c.draw_state,
-                       c.transform.trans(height + (i as f64 * width), 304.0),
+                       c.transform.trans(height + (i as f64 * width), bot_divider),
                        g);
         }
 
         // draw vertical borders in two segments
-        let width = 10.0;
-        let height = 4.0;
+        let width = settings.border_long;
+        let height = settings.border_short;
         let image = Image::new().rect([0.0, 0.0, width, height]);
-        for i in 0..7 {
+        let amount = (settings.smiley_side / settings.border_short) as usize;
+        for i in 0..amount {
             image.draw(&self.textures.border.leftright,
                        &c.draw_state,
-                       c.transform.trans(0.0, 10.0 + (i as f64 * height)),
+                       c.transform.trans(0.0, settings.border_long + (i as f64 * height)),
                        g);
             image.draw(&self.textures.border.leftright,
                        &c.draw_state,
-                       c.transform.trans(506.0, 10.0 + (i as f64 * height)),
+                       c.transform.trans(far_right, settings.border_long + (i as f64 * height)),
                        g);
         }
-        for i in 0..64 {
+        let below_join = settings.border_long * 2.0 + settings.smiley_side;
+        let amount = (settings.rows as f64 * settings.square_side / settings.border_short) as usize;
+        for i in 0..amount {
             image.draw(&self.textures.border.leftright,
                        &c.draw_state,
-                       c.transform.trans(0.0, 48.0 + (i as f64 * height)),
+                       c.transform.trans(0.0, below_join + (i as f64 * height)),
                        g);
             image.draw(&self.textures.border.leftright,
                        &c.draw_state,
-                       c.transform.trans(506.0, 48.0 + (i as f64 * height)),
+                       c.transform.trans(far_right, below_join + (i as f64 * height)),
                        g);
         }
 
-        let side = 28.0;
+        let width = settings.time_width;
+        let height = settings.time_height;
+        let image = Image::new().rect([0.0, 0.0, width, height]);
+
+
+        let side = settings.smiley_side;
         let image = Image::new().rect(square(0.0, 0.0, side));
-        image.draw(&self.textures.smiley.normal,
+        let texture = self.textures.smiley(controller);
+        image.draw(texture,
                    &c.draw_state,
-                   c.transform.trans(506.0/2.0 - 14.0, 10.0),
+                   c.transform.trans(settings.scr_width/2.0 - settings.smiley_side/2.0, settings.border_long),
                    g);
 
         // draw field
-        let image = Image::new().rect(square(0.0, 0.0, settings.cell_size));
+        let image = Image::new().rect(square(0.0, 0.0, settings.square_side));
+        let offset = [
+            self.settings.border_long,
+            self.settings.border_long * 2.0 + self.settings.smiley_side,
+        ];
         for i in 0..settings.rows{
             for j in 0..settings.cols {
                 let pos = [
-                    (j as f64 * settings.cell_size) + settings.playtl[0],
-                    (i as f64 * settings.cell_size) + settings.playtl[1],
+                    (j as f64 * settings.square_side) + offset[0],
+                    (i as f64 * settings.square_side) + offset[1],
                 ];
                 image.draw(self.textures.by_index(controller, i, j),
                            &c.draw_state,

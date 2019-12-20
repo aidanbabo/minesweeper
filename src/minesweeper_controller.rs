@@ -2,6 +2,7 @@ use piston::input::GenericEvent;
 
 use crate::MineSweeper;
 use crate::minesweeper::{Content, Status};
+use crate::MineSweeperViewSettings;
 
 /// Handles all events, communicating between input and data
 pub struct MineSweeperController {
@@ -18,8 +19,17 @@ impl MineSweeperController {
     }
 
     /// Handles an event
-    pub fn event<E: GenericEvent>(&mut self, offset: [f64; 2], size: [f64; 2], e: &E) {
+    pub fn event<E: GenericEvent>(&mut self, settings: MineSweeperViewSettings, e: &E) {
         use piston::input::{Button, Key, MouseButton};
+    
+        let offset = [
+            settings.border_long,
+            settings.border_long * 2.0 + settings.smiley_side,
+        ];
+        let size = [
+            settings.cols as f64 * settings.square_side,
+            settings.rows as f64 * settings.square_side,
+        ];
 
         if let Some(p) = e.mouse_cursor_args() {
             self.cursor_pos = p;
@@ -28,13 +38,15 @@ impl MineSweeperController {
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             let x = self.cursor_pos[0];
             let y = self.cursor_pos[1];
-            if x >= 244.0 && x <= 272.0 && y >= 10.0 && y <= 38.0 {
+            let mid = settings.scr_width/2.0;
+            let half_smile = settings.smiley_side/2.0;
+            if x >= mid - half_smile && x <= mid + half_smile && y >= settings.border_long && y <= settings.border_long + settings.smiley_side {
                 self.reset();
                 return;
             }
         }
 
-        if self.minesweeper.lost { return }
+        if self.minesweeper.lost || self.minesweeper.won { return }
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
@@ -67,6 +79,8 @@ impl MineSweeperController {
                 }
             }
         }
+        
+        if self.minesweeper.left == 0 { self.minesweeper.won = true }
     }
 
     fn clear_around(&mut self, row: usize, col: usize) {
@@ -127,10 +141,12 @@ impl MineSweeperController {
             }
             if col > 0 { self.reveal(row, col-1); }
             if col < self.minesweeper.cols - 1 { self.reveal(row, col+1); }
+
         // if it is a mine, lose
         } else if square.content == Content::Mine {
             self.lose();
         }
+        self.minesweeper.left -= 1;
     }
 
     fn flags_around(&self, row: usize, col: usize) -> u8 {
